@@ -1,52 +1,61 @@
-<!-- perfiluser.php -->
 <?php
 session_start();
-require_once('./../conexiónBD.php');
+include_once "./../conexiónBD.php";
 
-if (!isset($_SESSION['usuario_id'])) {
-    header('Location: ./../login/index.php');
+if (!isset($_GET['usuario'])) {
+    echo "Usuario no especificado.";
+    exit();
+}
+
+
+$usuario = $_GET['usuario'];
+$userParaComprobarSiEresTu = $_SESSION['usuario_id'];
+$stmt = $db->prepare("SELECT * FROM users WHERE iduser = ?");
+$stmt->execute([$userParaComprobarSiEresTu]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+$nomUserComprobarSiEresTu = htmlspecialchars($_SESSION['usuario'] ?? 'Invitado');
+
+if($usuario === $nomUserComprobarSiEresTu){
+    header('Location: perfilUser.php');
     exit;
 }
 
-$iduser = $_SESSION['usuario_id'];
-$stmt = $db->prepare("SELECT * FROM users WHERE iduser = ?");
-$stmt->execute([$iduser]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+// Consulta para obtener los datos públicos del usuario
+$sql = "SELECT iduser, username, profileImage, bio, location, age FROM users WHERE username = ?";
+$stmt = $db->prepare($sql);
+$stmt->execute([$usuario]);
+$datos = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$nombreUsuario = htmlspecialchars($_SESSION['usuario'] ?? 'Invitado');
-
-// Obtener datos del usuario
-$stmt = $db->prepare("SELECT * FROM users WHERE iduser = ?");
-$stmt->execute([$iduser]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-$nombreUsuario = htmlspecialchars($user['username'] ?? 'Invitado');
+if (!$datos) {
+    header('Location: userNoEncontrado.php');
+    exit();
+}
 
 // Obtener número de seguidores
 $stmt = $db->prepare("SELECT COUNT(*) FROM follows WHERE following_id = ?");
-$stmt->execute([$iduser]);
+$stmt->execute([$usuario]);
 $totalSeguidores = $stmt->fetchColumn();
 
 // Obtener número de seguidos
 $stmt = $db->prepare("SELECT COUNT(*) FROM follows WHERE follower_id = ?");
-$stmt->execute([$iduser]);
+$stmt->execute([$usuario]);
 $totalSiguiendo = $stmt->fetchColumn();
 
-// Obtener revs del usuario
-$stmt = $db->prepare("SELECT * FROM revs WHERE iduser = ? ORDER BY fecha DESC");
-$stmt->execute([$iduser]);
-$revs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$profileImagePath = "./../imagenes/profiles/" . ($user['profileImage'] ?? 'default.jpg');
-if (!file_exists($profileImagePath) || empty($user['profileImage'])) {
-    $profileImagePath = "./../imagenes/profiles/default.jpg";
-}
+$sqlRevs = "SELECT * FROM revs WHERE iduser = ? ";
+$stmtRevs = $db->prepare($sqlRevs);
+$stmtRevs->execute([$datos['iduser']]);
+$revs = $stmtRevs->fetchAll(PDO::FETCH_ASSOC);
 
-// Asignamos estilos como en dashboard.php
-$carImages = [
-    "./../imagenes/lamborghini.png" => ["background" => "#1d1d1d"],
-];
-$randomCar = array_rand($carImages);    
-$carStyle = $carImages[$randomCar];
+
+$nombreUsuario = htmlspecialchars($datos['username']);
+$profileImagePath = !empty($datos['profileImage']) ? "./../imagenes/profiles/" . htmlspecialchars($datos['profileImage']) : "./../imagenes/profiles/default.png";
+
+
+$stmt = $db->prepare("SELECT 1 FROM seguidores WHERE seguidor_id = ? AND seguido_id = ?");
+$stmt->execute([$_SESSION['usuario_id'], $user['iduser']]);
+$yaLoSigo = $stmt->fetchColumn();
+
 ?>
 
 <!DOCTYPE html>
@@ -54,14 +63,13 @@ $carStyle = $carImages[$randomCar];
 
 <head>
     <meta charset="UTF-8">
-    <title>Tu perfil!</title>
+    <title>Perfil de <?php echo $nombreUsuario; ?>!</title>
     <link rel="stylesheet" href="./dashboard.css">
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     <link rel="icon" type="image/x-icon" href="./../imagenes/favicon.png">
     <style>
     body {
-        background: <?php echo $carStyle['background'];
-        ?>;
+        background: #1d1d1d;
     }
 
     * {
@@ -411,6 +419,82 @@ $carStyle = $carImages[$randomCar];
         margin-left: 5px;
     }
 
+    .custom-file-upload {
+        display: inline-block;
+        padding: 10px 20px;
+        cursor: pointer;
+        border: 2px dashed #666;
+        color: #fff;
+        background-color: #2b2b2b;
+        border-radius: 8px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+
+    .custom-file-upload:hover {
+        background-color: #444;
+        border-color: #aaa;
+    }
+
+    .custom-file-upload input[type="file"] {
+        display: none;
+    }
+
+    .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: transparent;
+        padding: 10px 20px;
+        flex-wrap: wrap;
+    }
+
+    .navbar .nav-links {
+        display: flex;
+        gap: 15px;
+    }
+
+    .navbar .nav-links a {
+        color: white;
+        text-decoration: none;
+        font-size: 16px;
+        padding: 6px 12px;
+        border-radius: 4px;
+        transition: background 0.3s;
+    }
+
+    .navbar .nav-links a:hover {
+        background: #333;
+    }
+
+    .search-form {
+        display: flex;
+        align-items: center;
+        border: 2px solid white;
+        border-radius: 6px;
+        padding: 3px 8px;
+        background-color: transparent;
+        margin-left: auto;
+    }
+
+    .search-form input {
+        background: transparent;
+        border: none;
+        outline: none;
+        color: <?php echo $carStyle['busqueda'];
+        ?>;
+        font-size: 16px;
+    }
+
+    .search-form button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: white;
+        font-size: 18px;
+        margin-left: 5px;
+    }
+
     /* Imagen del rev */
     .rev-imagen {
         width: 100%;
@@ -543,7 +627,7 @@ $carStyle = $carImages[$randomCar];
                 <input type="text" name="usuario" placeholder="Buscar usuario..." required>
                 <button type="submit"><i class='bx bx-search'></i></button>
             </form>
-            <a href="dashboard.php" style="--i:4;">Dashboard</a>
+            <a href="perfilUser.php" style="--i:4;">Mi perfil</a>
             <a href="logout.php" style="--i:5;">Cerrar sesión</a>
         </nav>
     </header>
@@ -555,8 +639,8 @@ $carStyle = $carImages[$randomCar];
                 <h2><?php echo $nombreUsuario; ?></h2>
                 <p>
                     <?php
-                    if (!empty($user['bio'])) {
-                        echo htmlspecialchars($user['bio']);
+                    if (!empty($datos['bio'])) {
+                        echo htmlspecialchars($datos['bio']);
                     } else {
                         echo "(Este entusiasta de coches aún no ha tuneado su biografía.)";
                     }
@@ -568,7 +652,12 @@ $carStyle = $carImages[$randomCar];
                         <p>Rev’s</p>
                     </div>
                     <div>
-                        <h3><?php echo $totalSeguidores; ?></h3>
+                        <?php
+                            $stmt = $db->prepare("SELECT COUNT(*) FROM seguidores WHERE seguido_id = ?");
+                            $stmt->execute([$user['iduser']]);
+                            $seguidores = $stmt->fetchColumn();
+                        ?>
+                        <h3><?php echo $seguidores; ?></h3>
                         <p>Seguidores</p>
                     </div>
                     <div>
@@ -577,12 +666,19 @@ $carStyle = $carImages[$randomCar];
                     </div>
                 </div>
             </div>
-            <button class="btn-edit">Editar perfil</button>
+            <form action="seguir.php" method="post">
+                <input type="hidden" name="seguido_id" value="<?php echo $user['iduser']; ?>">
+                <?php if ($yaLoSigo): ?>
+                <button type="submit" name="accion" value="unfollow" class="btn">Dejar de seguir</button>
+                <?php else: ?>
+                <button type="submit" name="accion" value="follow" class="btn">Seguir</button>
+                <?php endif; ?>
+            </form>
 
         </div>
 
         <div class="revs-section">
-            <h2 class="revvvv">Tus rev's</h2>
+            <h2 class="revvvv">Sus rev's</h2>
             <?php if (empty($revs)) : ?>
             <p class="feed-placeholder">No has publicado ningún rev... 🏋️</p>
             <?php else : ?>
@@ -608,7 +704,7 @@ $carStyle = $carImages[$randomCar];
                 </div>
 
                 <div class="rev-interacciones">
-                    <form action="like.php" method="post" class="like-form">
+                    <form action="likeU.php" method="post" class="like-form">
                         <input type="hidden" name="idrev" value="<?php echo $idrev; ?>">
                         <button type="submit" class="like-btn">❤️</button>
                         <span class="like-count"><?php echo $likes; ?></span>
@@ -627,7 +723,7 @@ $carStyle = $carImages[$randomCar];
                     <?php endif; ?>
 
                     <!-- Formulario para comentar -->
-                    <form action="comentar.php" method="post" class="comentario-form">
+                    <form action="comentarU.php" method="post" class="comentario-form">
                         <input type="hidden" name="idrev" value="<?php echo $idrev; ?>">
                         <input type="text" name="comentario" placeholder="Escribe tu comentario..." required
                             class="black">
@@ -662,40 +758,6 @@ $carStyle = $carImages[$randomCar];
         </div>
     </div>
 
-
-
-
-    <script>
-    const modal = document.getElementById("editModal");
-    const btn = document.querySelector(".btn-edit");
-    const span = document.querySelector(".close");
-
-    // Abrir modal
-    btn.onclick = () => {
-        modal.classList.add("show");
-    };
-
-    // Cerrar modal
-    span.onclick = () => {
-        modal.classList.remove("show");
-    };
-
-    // Cerrar haciendo clic fuera
-    window.onclick = (event) => {
-        if (event.target === modal) {
-            modal.classList.remove("show");
-        }
-    };
-    </script>
-
-
 </body>
 
 </html>
-
-<script>
-document.querySelector('.btn-edit').addEventListener('click', () => {
-    const form = document.getElementById('editProfileForm');
-    form.style.display = form.style.display === 'none' ? 'block' : 'none';
-});
-</script>
